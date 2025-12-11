@@ -19,23 +19,12 @@ st.set_page_config(
 # ============================================================================
 st.markdown("""
     <style>
-    .main-header {
-        font-size: 10rem;
-        font-weight: bold;
-        color: #1f77b4;
-    }
     .info-box {
         background-color: #e8f4f8;
         padding: 15px;
         border-radius: 10px;
         border-left: 5px solid #1f77b4;
         margin: 10px 0;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -180,805 +169,619 @@ def calculate_stringency(npis):
 if 'historical_data' not in st.session_state:
     st.session_state.historical_data = generate_dummy_historical_data()
 
-if 'results' not in st.session_state:
-    st.session_state.results = None
-
 # ============================================================================
 # HEADER
 # ============================================================================
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     st.markdown("# COVID Evidence Explorer")
-    st.caption("Data-driven projections based on historical evidence from similar situations")
-st.write("")
-st.write("")
+
 st.write("")
 
 _, exp_col, _ = st.columns([1,3,1])
 with exp_col:
-    with st.expander("**📖 Introduction to This Dashboard**"):
+    with st.expander("**📖 Guide to This Dashboard**"):
+        st.markdown("""
+<div class="info-box">
+<h3>How This Dashboard Works</h3>
+<p><strong>This dashboard does not use a simulation model.</strong></p>
+<p>Instead, it looks for <strong>real historical COVID situations</strong> that match the settings you choose.</p>
 
-            st.markdown("""
-    <div class="info-box">
-    <h3>📖 How This Dashboard Works</h3>
-    <p><strong>This dashboard does not use a simulation model.</strong></p>
-    <p>Instead, it looks for <strong>real historical COVID situations</strong> that match the settings you choose.</p>
-    
-    <p><strong>You define a hypothetical country's:</strong></p>
-    <ul>
-        <li>Development level (wealth, health, education)</li>
-        <li>Vaccination rate</li>
-        <li>Economic support</li>
-        <li>Non-pharmaceutical interventions (NPIs)</li>
-        <li>Population size</li>
-    </ul>
-    
-    <p>These inputs form a <strong>profile vector</strong>.</p>
-    
-    <p>We compare this profile to <strong>thousands of real country-weeks</strong> recorded in global COVID datasets.</p>
-    
-    <p>The system finds the <strong>closest matches</strong> ("nearest neighbours") and looks at what happened next in those situations.</p>
-    
-    <p>The curves you see (cases, deaths, mortality) are created by <strong>averaging the actual trajectories</strong> of those similar historical episodes.</p>
-    
-    <p><strong>Compliance (%)</strong> is also learned from these neighbours. It reflects how populations in similar real situations responded to government policy.</p>
-    
-    <p><strong>Stringency</strong> is calculated directly from the NPIs you select using the Oxford Government Response Tracker method.</p>
-    
-    <p>✅ This approach provides <strong>transparent, data-driven insights</strong> without relying on mechanistic epidemiological models.</p>
-    
-    <p>✅ All projections are <strong>grounded in what actually happened</strong> in countries with similar characteristics and policies.</p>
-    </div>
-    """, unsafe_allow_html=True)
+<p><strong>You define a hypothetical country's:</strong></p>
+<ul>
+    <li>Development level (wealth, health, education)</li>
+    <li>Vaccination rate</li>
+    <li>Economic support</li>
+    <li>Non-pharmaceutical interventions (NPIs)</li>
+    <li>Population size</li>
+</ul>
 
-st.markdown("---")
+<p>These inputs form a <strong>profile vector</strong>.</p>
+
+<p><strong>The system then:</strong></p>
+<ol>
+    <li>Compares your profile to thousands of real (country, week) episodes from COVID history</li>
+    <li>Finds the <strong>K nearest neighbours</strong> using Euclidean distance</li>
+    <li>Computes <strong>weights</strong> emphasizing closer matches</li>
+    <li>Takes a <strong>weighted average</strong> of what actually happened in those situations</li>
+</ol>
+
+<p><strong>Result:</strong> You see what likely would have happened based on evidence from similar real-world scenarios.</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.write("")
 
 # ============================================================================
-# SIDEBAR - USER INPUTS
+# SIDEBAR - INPUT CONTROLS
 # ============================================================================
 with st.sidebar:
-    st.title("Scenario Configuration")
+    st.header("⚙️ Scenario Configuration")
+    st.caption("🔄 Results update automatically as you change parameters")
     
-    # -------------------------
-    # A. COUNTRY PROFILE (EXPANDABLE)
-    # -------------------------
-    with st.expander("📊 Country Profile (HDI Components)", expanded=False):
-        st.caption("These describe the long-term developmental baseline")
-        
-        wealth_index = st.slider(
-            "💰 Wealth Index (HDI Income)",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.7,
-            step=0.1,
-            help="0 = very low income; 1 = very high income"
-        )
-        #st.progress(wealth_index)
-        
-        health_index = st.slider(
-            "🏥 Health Index (Life Expectancy)",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.8,
-            step=0.1,
-            help="0 = low life expectancy; 1 = high life expectancy"
-        )
-        #st.progress(health_index)
-        
-        education_index = st.slider(
-            "🎓 Education Index",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.7,
-            step=0.1,
-            help="0 = low schooling/literacy; 1 = high"
-        )
-        #st.progress(education_index)
+    st.markdown("---")
     
-    # -------------------------
-    # B. POLICY LEVERS (EXPANDABLE)
-    # -------------------------
-    with st.expander("🎚️ Policy Levers", expanded=False):
-        
-        # Vaccination
-        vaccination_pct = st.slider(
-            "💉 Vaccination Coverage (%)",
-            min_value=0,
-            max_value=100,
-            value=60,
-            step=10,
-            help="Percentage of population vaccinated"
-        )
-        vacc_share = vaccination_pct / 100.0
-        #st.progress(vacc_share)
-        
-        # Income Support
-        income_support_level = st.select_slider(
-            "💵 Income Support",
-            options=["None", "Limited", "High"],
-            value="Limited",
-            help="Level of government economic support"
-        )
-        income_support_map = {"None": 0.0, "Limited": 0.5, "High": 1.0}
-        income_support = income_support_map[income_support_level]
+    # Population and forecast
+    st.subheader("📊 Analysis Settings")
+    population = st.number_input(
+        "Population",
+        min_value=100000,
+        max_value=1500000000,
+        value=10000000,
+        step=1000000,
+        help="Total population size"
+    )
     
-    # -------------------------
-    # C. NPIs (9 policies) - EXPANDABLE
-    # -------------------------
-    with st.expander("🚦 Non-Pharmaceutical Interventions (NPIs)", expanded=False):
-        st.caption("Select the intensity of each intervention")
-        
-        npi_1 = st.select_slider(
-            "🏫 School Closures",
-            options=["Open", "Partial", "Strong"],
-            value="Partial"
-        ) 
-        npi_1_map = {"Open": 0.0, "Partial": 0.5, "Strong": 1.0}
-        npi_1_value = npi_1_map[npi_1]
-        
-        npi_2 = st.select_slider(
-            "🏢 Workplace Closures",
-            options=["Open", "Partial", "Strong"],
-            value="Partial"
-        )
-        npi_2_map = {"Open": 0.0, "Partial": 0.5, "Strong": 1.0}
-        npi_2_value = npi_2_map[npi_2]
-        
-        npi_3 = st.select_slider(
-            "🎭 Public Events",
-            options=["Allowed", "Restricted", "Banned"],
-            value="Restricted"
-        )
-        npi_3_map = {"Allowed": 0.0, "Restricted": 0.5, "Banned": 1.0}
-        npi_3_value = npi_3_map[npi_3]
-        
-        npi_4 = st.select_slider(
-            "👥 Gathering Limits",
-            options=["No Limit", "Limits", "Strict Limits"],
-            value="Limits"
-        )
-        npi_4_map = {"No Limit": 0.0, "Limits": 0.5, "Strict Limits": 1.0}
-        npi_4_value = npi_4_map[npi_4]
-        
-        npi_5 = st.select_slider(
-            "🚌 Public Transport",
-            options=["Open", "Restricted", "Closed"],
-            value="Open"
-        )
-        npi_5_map = {"Open": 0.0, "Restricted": 0.5, "Closed": 1.0}
-        npi_5_value = npi_5_map[npi_5]
-        
-        npi_6 = st.select_slider(
-            "🏠 Stay-at-Home Orders",
-            options=["None", "Partial", "Required"],
-            value="None"
-        )
-        npi_6_map = {"None": 0.0, "Partial": 0.5, "Required": 1.0}
-        npi_6_value = npi_6_map[npi_6]
-        
-        npi_7 = st.select_slider(
-            "🚗 Internal Movement",
-            options=["Free", "Restricted", "Strong"],
-            value="Free"
-        )
-        npi_7_map = {"Free": 0.0, "Restricted": 0.5, "Strong": 1.0}
-        npi_7_value = npi_7_map[npi_7]
-        
-        npi_8 = st.select_slider(
-            "✈️ International Travel",
-            options=["Open", "Screening", "Quarantine", "Closed"],
-            value="Screening"
-        )
-        npi_8_map = {"Open": 0.0, "Screening": 0.33, "Quarantine": 0.67, "Closed": 1.0}
-        npi_8_value = npi_8_map[npi_8]
-        
-        npi_9 = st.select_slider(
-            "📢 Public Information Campaigns",
-            options=["None", "Limited", "Extensive"],
-            value="Extensive"
-        )
-        npi_9_map = {"None": 0.0, "Limited": 0.5, "Extensive": 1.0}
-        npi_9_value = npi_9_map[npi_9]
-        
-        # Collect all NPIs
-        npis = [npi_1_value, npi_2_value, npi_3_value, npi_4_value, npi_5_value, 
-                npi_6_value, npi_7_value, npi_8_value, npi_9_value]
+    forecast_weeks = st.slider(
+        "Forecast Horizon (weeks)",
+        min_value=4,
+        max_value=16,
+        value=12,
+        help="Number of weeks to project forward"
+    )
     
-    # -------------------------
-    # D. POPULATION & FORECAST (EXPANDABLE)
-    # -------------------------
-    with st.expander("👥 Population & Forecast", expanded=False):
-        st.caption("For scaling outputs only (not part of matching)")
-        
-        population = st.number_input(
-            "Population Size",
-            min_value=100000,
-            max_value=1500000000,
-            value=10000000,
-            step=1000000,
-            format="%d"
-        )
-        
-        st.markdown("---")
-        
-        forecast_weeks = st.slider(
-            "📅 Weeks to Project",
-            min_value=4,
-            max_value=16,
-            value=8,
-            step=1
-        )
+    st.markdown("---")
     
-    # -------------------------
-    # E. ADVANCED SETTINGS (EXPANDABLE - COLLAPSED BY DEFAULT)
-    # -------------------------
-    with st.expander("⚙️ Advanced Settings", expanded=False):
+    # Country Profile
+    st.subheader("🌍 Country Profile")
+    
+    wealth_index = st.slider(
+        "Wealth Index",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.6,
+        step=0.05,
+        help="Economic development level (0=Low, 1=High)"
+    )
+    
+    health_index = st.slider(
+        "Health System Index",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.7,
+        step=0.05,
+        help="Healthcare capacity (0=Weak, 1=Strong)"
+    )
+    
+    education_index = st.slider(
+        "Education Index",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.65,
+        step=0.05,
+        help="Education level (0=Low, 1=High)"
+    )
+    
+    st.markdown("---")
+    
+    # Vaccination and Economic Support
+    st.subheader("💉 Vaccination & Support")
+    
+    vaccination_pct = st.slider(
+        "Vaccination Coverage (%)",
+        min_value=0,
+        max_value=100,
+        value=30,
+        step=5,
+        help="Percentage of population vaccinated"
+    )
+    
+    income_support_level = st.select_slider(
+        "Income Support Level",
+        options=["None", "Partial", "Full"],
+        value="Partial",
+        help="Government economic support for affected individuals"
+    )
+    
+    st.markdown("---")
+    
+    # NPIs
+    st.subheader("🛡️ Non-Pharmaceutical Interventions")
+    st.caption("0 = None, 1 = Maximum")
+    
+    with st.expander("School & Work"):
+        npi_1 = st.slider("School Closures", 0.0, 1.0, 0.5, 0.1, key="npi_1")
+        npi_2 = st.slider("Workplace Closures", 0.0, 1.0, 0.4, 0.1, key="npi_2")
+    
+    with st.expander("Public Activities"):
+        npi_3 = st.slider("Cancel Public Events", 0.0, 1.0, 0.6, 0.1, key="npi_3")
+        npi_4 = st.slider("Restrictions on Gatherings", 0.0, 1.0, 0.5, 0.1, key="npi_4")
+    
+    with st.expander("Movement & Travel"):
+        npi_5 = st.slider("Public Transport Restrictions", 0.0, 1.0, 0.3, 0.1, key="npi_5")
+        npi_6 = st.slider("Stay-at-Home Requirements", 0.0, 1.0, 0.4, 0.1, key="npi_6")
+        npi_7 = st.slider("Internal Movement Restrictions", 0.0, 1.0, 0.3, 0.1, key="npi_7")
+        npi_8 = st.slider("International Travel Controls", 0.0, 1.0, 0.7, 0.1, key="npi_8")
+    
+    with st.expander("Communication"):
+        npi_9 = st.slider("Public Information Campaigns", 0.0, 1.0, 0.8, 0.1, key="npi_9")
+    
+    st.markdown("---")
+    
+    # Advanced settings
+    st.subheader("Others")
+
+    with st.expander("🔧 Advanced Settings"):
         k_neighbours = st.slider(
-            "Number of Nearest Neighbours (K)",
+            "K Nearest Neighbours",
             min_value=10,
             max_value=100,
             value=30,
             step=5,
-            help="How many similar historical situations to average"
+            help="Number of similar historical episodes to match"
         )
         
-        epsilon = st.number_input(
+        epsilon = st.slider(
             "Distance Epsilon",
             min_value=0.001,
             max_value=0.1,
             value=0.01,
+            step=0.001,
             format="%.3f",
-            help="Small value to avoid division by zero in weights"
+            help="Small value to avoid division by zero in weighting"
         )
-    
-    st.markdown("---")
-           
-    # -------------------------
-    # RUN BUTTON
-    # -------------------------
-    run_analysis = st.button("🔍 Find Similar Situations & Project", type="primary", use_container_width=True)
 
 # ============================================================================
-# MAIN CONTENT - PROCESS AND DISPLAY RESULTS
+# MAIN CONTENT - COMPUTE AND DISPLAY RESULTS
 # ============================================================================
 
-if run_analysis:
-    with st.spinner("🔄 Searching for similar historical situations..."):
-        # Step 1: Build feature vector
-        scenario_vector = build_feature_vector(
-            wealth_index, health_index, education_index,
-            npis, vacc_share, income_support
-        )
-        
-        # Step 2: Find nearest neighbours
-        nearest_neighbours = find_nearest_neighbours(
-            scenario_vector, 
-            st.session_state.historical_data, 
-            k=k_neighbours
-        )
-        
-        # Step 3: Compute weights
-        weights = compute_weights(nearest_neighbours, epsilon=epsilon)
-        
-        # Step 4: Generate projections
-        projections = generate_projections(
-            nearest_neighbours, weights, forecast_weeks, population
-        )
-        
-        # Step 5: Calculate stringency
-        stringency = calculate_stringency(npis)
-        
-        # Store results
-        st.session_state.results = {
-            'projections': projections,
-            'stringency': stringency,
-            'nearest_neighbours': nearest_neighbours,
-            'weights': weights,
-            'scenario_vector': scenario_vector
-        }
+# Convert inputs to feature vector
+npis = [npi_1, npi_2, npi_3, npi_4, npi_5, npi_6, npi_7, npi_8, npi_9]
+vacc_share = vaccination_pct / 100
+income_support_map = {"None": 0, "Partial": 0.5, "Full": 1}
+income_support = income_support_map[income_support_level]
+
+# Build scenario vector
+scenario_vector = build_feature_vector(
+    wealth_index, health_index, education_index,
+    npis, vacc_share, income_support
+)
+
+# Show loading state
+with st.spinner("🔍 Finding similar situations and generating projections..."):
+    # Find nearest neighbours
+    nearest_neighbours = find_nearest_neighbours(
+        scenario_vector,
+        st.session_state.historical_data,
+        k=k_neighbours
+    )
     
-    st.success("✅ Analysis complete! Scroll down to see results.")
+    # Compute weights
+    weights = compute_weights(nearest_neighbours, epsilon=epsilon)
+    
+    # Generate projections
+    projections = generate_projections(
+        nearest_neighbours,
+        weights,
+        forecast_weeks,
+        population
+    )
+    
+    # Calculate stringency
+    stringency = calculate_stringency(npis)
+    
+    # Store results
+    results = {
+        'scenario_vector': scenario_vector,
+        'nearest_neighbours': nearest_neighbours,
+        'weights': weights,
+        'projections': projections,
+        'stringency': stringency
+    }
 
 # ============================================================================
-# DISPLAY RESULTS
+# DISPLAY RESULTS IN TABS
 # ============================================================================
 
-if st.session_state.results is not None:
-    results = st.session_state.results
-    projections = results['projections']
-    stringency = results['stringency']
-    compliance = projections['compliance']
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📈 Projections",
+    "🎯 Similar Situations",
+    "📋 Scenario Details",
+    "📖 Methodology"
+])
+
+# -------------------------
+# TAB 1: PROJECTIONS
+# -------------------------
+with tab1:
+    st.subheader("Outcome Projections")
+    st.caption(f"Based on weighted average of {k_neighbours} most similar historical situations")
     
-    st.markdown("---")
-    st.header("📊 Projection Results")
-    st.caption(f"Based on {k_neighbours} similar historical situations")
+    st.write("")
     
-    # -------------------------
-    # KEY METRICS
-    # -------------------------
-    col1, col2, col3, col4 = st.columns(4)
+    # Main layout: Left side (metrics + compliance) and Right side (weekly case chart) - equal sized
+    left_col, right_col = st.columns(2)
     
-    with col1:
-        total_cases = int(projections['cases_absolute'].sum())
-        st.metric(
-            "Total Projected Cases",
-            f"{total_cases:,}",
-            help=f"Over {forecast_weeks} weeks"
-        )
+    with left_col:
+        # Add a summary bar
+        st.markdown("""
+        <div style='text-align: center; padding: 6px; background-color: #1f77b4; border-radius: 10px; margin-bottom: 15px;'>
+            <h3 style='margin: 0; color: white;'>Summary</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        # 2x2 Metrics matrix with green text
+        metric_row1_col1, metric_row1_col2 = st.columns(2)
+        
+        total_cases = int(np.sum(projections['cases_absolute']))
+        total_deaths = int(np.sum(projections['deaths_absolute']))
+        avg_mortality = np.mean(projections['mortality']) * 100
+        
+        with metric_row1_col1:
+            st.markdown(f"""
+            <div style='text-align: center; padding: 20px; background-color: #FFFFFF; border-radius: 10px;'>
+                <div style='color: green; font-size: 20px; font-weight: 500;'>Total Cases</div>
+                <div style='color: green; font-size: 32px; font-weight: bold; margin-top: 10px;'>{total_cases:,}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with metric_row1_col2:
+            st.markdown(f"""
+            <div style='text-align: center; padding: 20px; background-color: #FFFFFF; border-radius: 10px;'>
+                <div style='color: green; font-size: 20px; font-weight: 500;'>Total Deaths</div>
+                <div style='color: green; font-size: 32px; font-weight: bold; margin-top: 10px;'>{total_deaths:,}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.write("")
+        
+        metric_row2_col1, metric_row2_col2 = st.columns(2)
+        
+        with metric_row2_col1:
+            st.markdown(f"""
+            <div style='text-align: center; padding: 20px; background-color: #FFFFFF; border-radius: 10px;'>
+                <div style='color: green; font-size: 20px; font-weight: 500;'>Avg Mortality Rate</div>
+                <div style='color: green; font-size: 32px; font-weight: bold; margin-top: 10px;'>{avg_mortality:.2f}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with metric_row2_col2:
+            st.markdown(f"""
+            <div style='text-align: center; padding: 20px; background-color: #FFFFFF; border-radius: 10px;'>
+                <div style='color: green; font-size: 20px; font-weight: 500;'>Stringency Index</div>
+                <div style='color: green; font-size: 32px; font-weight: bold; margin-top: 10px;'>{stringency:.1f}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.write("")
+        
+        # Compliance bar below metrics matrix - same width as matrix
+        compliance_pct = projections['compliance'] * 100
+        st.info(f"**Expected Public Compliance: {compliance_pct:.1f}%**")
     
-    with col2:
-        total_deaths = int(projections['deaths_absolute'].sum())
-        st.metric(
-            "Total Projected Deaths",
-            f"{total_deaths:,}",
-            help=f"Over {forecast_weeks} weeks"
-        )
-    
-    with col3:
-        st.metric(
-            "Stringency Index",
-            f"{stringency:.1f}",
-            help="Based on selected NPIs (0-100)"
-        )
-    
-    with col4:
-        st.metric(
-            "Expected Compliance",
-            f"{compliance * 100:.1f}%",
-            help="Learned from similar historical situations"
-        )
-    
-    st.markdown("---")
-    
-    # -------------------------
-    # TABS FOR DIFFERENT VIEWS
-    # -------------------------
-    tab1, tab2, tab3, tab4 = st.tabs(["📈 Projections", "🎯 Similar Situations", "📋 Scenario Details", "ℹ️ Methodology"])
-    
-    # -------------------------
-    # TAB 1: PROJECTIONS
-    # -------------------------
-    with tab1:
-        # Generate week labels
+    with right_col:
+        # Weekly case chart - increased height to match metrics + compliance bar
+        st.markdown("""
+        <div style='text-align: center; padding: 6px; background-color: #DEE1E2; border: 2px solid #dee2e6; border-radius: 10px; margin-bottom: 10px;'>
+            <h4 style='margin: 0; color: #333;'>Weekly Case Chart</h4>
+        </div>
+        """, unsafe_allow_html=True)
+        
         weeks = list(range(1, forecast_weeks + 1))
         
-        # ========================================================================
-        # CHART 1: CASES (STYLED)
-        # ========================================================================
-        st.subheader("Projected Cases")
-        
         fig_cases = go.Figure()
-        
         fig_cases.add_trace(go.Scatter(
             x=weeks,
             y=projections['cases_absolute'],
             mode='lines+markers',
-            name='Absolute Cases',
-            line=dict(color='#1f77b4', width=4, shape='spline'),
-            marker=dict(
-                size=8,
-                color='#1f77b4',
-                line=dict(color='white', width=2)
-            ),
-            hovertemplate='<b>Week %{x}</b><br>Cases: %{y:,.0f}<extra></extra>'
+            name='Cases',
+            line=dict(color='blue', width=3),
+            marker=dict(size=6)
         ))
-        
         fig_cases.update_layout(
-            height=450,
+            height=360,
             xaxis_title="Week",
             yaxis_title="Number of Cases",
-            hovermode='x unified',
-            plot_bgcolor='rgba(248, 249, 250, 1)',
+            plot_bgcolor='white',
             paper_bgcolor='white',
-            font=dict(family="Arial, sans-serif", size=12, color="#2c3e50"),
+            hovermode='x unified',
+            margin=dict(t=20, b=40, l=50, r=20),
+            # Add border to the chart
             xaxis=dict(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(200, 200, 200, 0.3)',
                 showline=True,
                 linewidth=2,
                 linecolor='#dee2e6',
                 mirror=True
             ),
             yaxis=dict(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(200, 200, 200, 0.3)',
                 showline=True,
                 linewidth=2,
                 linecolor='#dee2e6',
-                mirror=True,
-                tickformat=','
-            ),
-            margin=dict(l=70, r=40, t=40, b=60)
+                mirror=True
+            )
         )
-        
         st.plotly_chart(fig_cases, use_container_width=True)
-        
-        # ========================================================================
-        # CHART 2: DEATHS (STYLED)
-        # ========================================================================
-        st.markdown("---")
-        st.subheader("Projected Deaths")
+    
+    st.write("")
+    st.write("")
+    
+    # Bottom row: Weekly death chart and Mortality rate chart - reduced size
+    chart_col1, chart_col2 = st.columns(2)
+    
+    weeks = list(range(1, forecast_weeks + 1))
+    
+    with chart_col1:
+        st.markdown("""
+        <div style='text-align: center; padding: 6px; background-color: #DEE1E2; border: 2px solid #dee2e6; border-radius: 10px; margin-bottom: 10px;'>
+            <h4 style='margin: 0; color: #333;'>Weekly Death Chart</h4>
+        </div>
+        """, unsafe_allow_html=True)
         
         fig_deaths = go.Figure()
-        
         fig_deaths.add_trace(go.Scatter(
             x=weeks,
             y=projections['deaths_absolute'],
             mode='lines+markers',
-            name='Absolute Deaths',
-            line=dict(color='#e74c3c', width=4, shape='spline'),
-            marker=dict(
-                size=8,
-                color='#e74c3c',
-                line=dict(color='white', width=2)
-            ),
-            hovertemplate='<b>Week %{x}</b><br>Deaths: %{y:,.0f}<extra></extra>'
+            name='Deaths',
+            line=dict(color='red', width=3),
+            marker=dict(size=6)
         ))
-        
         fig_deaths.update_layout(
-            height=450,
+            height=280,
             xaxis_title="Week",
             yaxis_title="Number of Deaths",
-            hovermode='x unified',
-            plot_bgcolor='rgba(248, 249, 250, 1)',
+            plot_bgcolor='white',
             paper_bgcolor='white',
-            font=dict(family="Arial, sans-serif", size=12, color="#2c3e50"),
+            hovermode='x unified',
+            margin=dict(t=20, b=40, l=50, r=20),
+            # Add border to the chart
             xaxis=dict(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(200, 200, 200, 0.3)',
                 showline=True,
                 linewidth=2,
                 linecolor='#dee2e6',
                 mirror=True
             ),
             yaxis=dict(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(200, 200, 200, 0.3)',
                 showline=True,
                 linewidth=2,
                 linecolor='#dee2e6',
-                mirror=True,
-                tickformat=','
-            ),
-            margin=dict(l=70, r=40, t=40, b=60)
+                mirror=True
+            )
         )
-        
         st.plotly_chart(fig_deaths, use_container_width=True)
-        
-        # ========================================================================
-        # CHART 3: MORTALITY RATE (STYLED)
-        # ========================================================================
-        st.markdown("---")
-        st.subheader("Mortality Rate")
+    
+    with chart_col2:
+        st.markdown("""
+        <div style='text-align: center; padding: 6px; background-color: #DEE1E2; border: 2px solid #dee2e6; border-radius: 10px; margin-bottom: 10px;'>
+            <h4 style='margin: 0; color: #333;'>Mortality Rate Chart</h4>
+        </div>
+        """, unsafe_allow_html=True)
         
         fig_mortality = go.Figure()
-        
         fig_mortality.add_trace(go.Scatter(
             x=weeks,
-            y=projections['mortality'] * 100,  # Convert to percentage
+            y=projections['mortality'] * 100,
             mode='lines+markers',
-            name='Mortality Rate (%)',
-            line=dict(color='#f39c12', width=4, shape='spline'),
-            marker=dict(
-                size=8,
-                color='#f39c12',
-                line=dict(color='white', width=2)
-            ),
-            hovertemplate='<b>Week %{x}</b><br>Mortality: %{y:.2f}%<extra></extra>'
+            name='Mortality Rate',
+            line=dict(color='purple', width=3),
+            marker=dict(size=6)
         ))
-        
         fig_mortality.update_layout(
-            height=450,
+            height=280,
             xaxis_title="Week",
             yaxis_title="Mortality Rate (%)",
-            hovermode='x unified',
-            plot_bgcolor='rgba(248, 249, 250, 1)',
+            plot_bgcolor='white',
             paper_bgcolor='white',
-            font=dict(family="Arial, sans-serif", size=12, color="#2c3e50"),
+            hovermode='x unified',
+            margin=dict(t=20, b=40, l=50, r=20),
+            # Add border to the chart
             xaxis=dict(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(200, 200, 200, 0.3)',
                 showline=True,
                 linewidth=2,
                 linecolor='#dee2e6',
                 mirror=True
             ),
             yaxis=dict(
-                showgrid=True,
-                gridwidth=1,
-                gridcolor='rgba(200, 200, 200, 0.3)',
                 showline=True,
                 linewidth=2,
                 linecolor='#dee2e6',
-                mirror=True,
-                ticksuffix='%'
-            ),
-            margin=dict(l=70, r=40, t=40, b=60)
+                mirror=True
+            )
         )
-        
         st.plotly_chart(fig_mortality, use_container_width=True)
-        
-        # ========================================================================
-        # PER-CAPITA VIEW (STYLED)
-        # ========================================================================
-        st.markdown("---")
-        st.subheader("Per 100,000 Population")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            fig_cases_pc = go.Figure()
-            fig_cases_pc.add_trace(go.Scatter(
-                x=weeks,
-                y=projections['cases_per_100k'],
-                mode='lines+markers',
-                name='Cases per 100k',
-                line=dict(color='#3498db', width=3, shape='spline'),
-                marker=dict(size=6, color='#3498db', line=dict(color='white', width=1)),
-                hovertemplate='<b>Week %{x}</b><br>Cases: %{y:.1f}<extra></extra>'
-            ))
-            fig_cases_pc.update_layout(
-                title="Cases per 100k",
-                height=320,
-                xaxis_title="Week",
-                yaxis_title="Cases per 100k",
-                plot_bgcolor='rgba(248, 249, 250, 1)',
-                paper_bgcolor='white',
-                font=dict(size=11, color="#2c3e50"),
-                xaxis=dict(
-                    showgrid=True,
-                    gridcolor='rgba(200, 200, 200, 0.3)',
-                    showline=True,
-                    linecolor='#dee2e6'
-                ),
-                yaxis=dict(
-                    showgrid=True,
-                    gridcolor='rgba(200, 200, 200, 0.3)',
-                    showline=True,
-                    linecolor='#dee2e6'
-                ),
-                margin=dict(l=60, r=30, t=50, b=50)
-            )
-            st.plotly_chart(fig_cases_pc, use_container_width=True)
-        
-        with col2:
-            fig_deaths_pc = go.Figure()
-            fig_deaths_pc.add_trace(go.Scatter(
-                x=weeks,
-                y=projections['deaths_per_100k'],
-                mode='lines+markers',
-                name='Deaths per 100k',
-                line=dict(color='#e74c3c', width=3, shape='spline'),
-                marker=dict(size=6, color='#e74c3c', line=dict(color='white', width=1)),
-                hovertemplate='<b>Week %{x}</b><br>Deaths: %{y:.2f}<extra></extra>'
-            ))
-            fig_deaths_pc.update_layout(
-                title="Deaths per 100k",
-                height=320,
-                xaxis_title="Week",
-                yaxis_title="Deaths per 100k",
-                plot_bgcolor='rgba(248, 249, 250, 1)',
-                paper_bgcolor='white',
-                font=dict(size=11, color="#2c3e50"),
-                xaxis=dict(
-                    showgrid=True,
-                    gridcolor='rgba(200, 200, 200, 0.3)',
-                    showline=True,
-                    linecolor='#dee2e6'
-                ),
-                yaxis=dict(
-                    showgrid=True,
-                    gridcolor='rgba(200, 200, 200, 0.3)',
-                    showline=True,
-                    linecolor='#dee2e6'
-                ),
-                margin=dict(l=60, r=30, t=50, b=50)
-            )
-            st.plotly_chart(fig_deaths_pc, use_container_width=True)
 
+# -------------------------
+# TAB 2: SIMILAR SITUATIONS
+# -------------------------
+with tab2:
+    st.subheader("Most Similar Historical Situations")
+    st.caption(f"Showing top {min(5, k_neighbours)} nearest neighbours")
     
-    # -------------------------
-    # TAB 2: SIMILAR SITUATIONS
-    # -------------------------
-    with tab2:
-        st.subheader("🎯 Most Similar Historical Situations")
-        st.caption(f"Showing top {min(10, k_neighbours)} nearest neighbours")
-        
-        # Create table of nearest neighbours
-        neighbours_data = []
-        for i, (distance, episode) in enumerate(results['nearest_neighbours'][:10]):
-            neighbours_data.append({
-                'Rank': i + 1,
-                'Country': episode['country'],
-                'Week': episode['week'],
-                'Distance': f"{distance:.4f}",
-                'Weight': f"{results['weights'][i]:.4f}",
-                'Compliance': f"{episode['compliance']*100:.1f}%",
-                'Wealth': f"{episode['wealth']:.2f}",
-                'Health': f"{episode['health']:.2f}",
-                'Education': f"{episode['education']:.2f}",
-                'Vaccination': f"{episode['vacc_share']*100:.0f}%"
-            })
-        
-        df_neighbours = pd.DataFrame(neighbours_data)
-        st.dataframe(df_neighbours, use_container_width=True, hide_index=True)
-        
-        st.markdown("---")
-        
-        # Distance distribution
-        st.subheader("📊 Distance Distribution")
-        st.caption("How similar are the matched situations?")
-        
-        all_distances = [d for d, _ in results['nearest_neighbours']]
-        
-        fig_dist = go.Figure()
-        fig_dist.add_trace(go.Histogram(
-            x=all_distances,
-            nbinsx=20,
-            marker_color='lightblue',
-            marker_line_color='blue',
-            marker_line_width=1
-        ))
-        
-        fig_dist.update_layout(
-            height=300,
-            xaxis_title="Distance from Scenario",
-            yaxis_title="Count",
-            plot_bgcolor='white',
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig_dist, use_container_width=True)
-        
-        st.info(f"""
-        💡 **Interpretation:**
-        - Average distance: {np.mean(all_distances):.4f}
-        - Minimum distance: {np.min(all_distances):.4f}
-        - Maximum distance: {np.max(all_distances):.4f}
-        
-        Smaller distances indicate more similar historical situations. 
-        The weighted average emphasizes closer matches.
-        """)
+    # Create table of nearest neighbours
+    neighbours_data = []
+    for i, (distance, episode) in enumerate(results['nearest_neighbours'][:5]):
+        neighbours_data.append({
+            'Rank': i + 1,
+            'Country': episode['country'],
+            'Week': episode['week'],
+            'Distance': f"{distance:.4f}",
+            'Weight': f"{results['weights'][i]:.4f}",
+            'Compliance': f"{episode['compliance']*100:.1f}%",
+            'Wealth': f"{episode['wealth']:.2f}",
+            'Health': f"{episode['health']:.2f}",
+            'Education': f"{episode['education']:.2f}",
+            'Vaccination': f"{episode['vacc_share']*100:.0f}%"
+        })
     
-    # -------------------------
-    # TAB 3: SCENARIO DETAILS
-    # -------------------------
-    with tab3:
-        st.subheader("📋 Your Scenario Configuration")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Country Profile:**")
-            profile_data = {
-                "Component": ["Wealth Index", "Health Index", "Education Index"],
-                "Value": [f"{wealth_index:.1f}", f"{health_index:.1f}", f"{education_index:.1f}"]
-            }
-            st.table(pd.DataFrame(profile_data))
-            
-            st.write("**Economic Support:**")
-            st.write(f"- Vaccination Coverage: {vaccination_pct}%")
-            st.write(f"- Income Support: {income_support_level}")
-        
-        with col2:
-            st.write("**Non-Pharmaceutical Interventions:**")
-            npi_data = {
-                "Intervention": [
-                    "School Closures", "Workplace Closures", "Public Events",
-                    "Gathering Limits", "Public Transport", "Stay-at-Home",
-                    "Internal Movement", "International Travel", "Information Campaigns"
-                ],
-                "Level": [
-                    npi_1, npi_2, npi_3, npi_4, npi_5, 
-                    npi_6, npi_7, npi_8, npi_9
-                ],
-                "Value": [f"{v:.2f}" for v in npis]
-            }
-            st.dataframe(pd.DataFrame(npi_data), hide_index=True, use_container_width=True)
-        
-        st.markdown("---")
-        
-        st.write("**Feature Vector (14 dimensions):**")
-        st.code(f"{results['scenario_vector']}", language=None)
-        
-        st.markdown("---")
-        
-        st.write("**Analysis Parameters:**")
-        st.write(f"- Population: {population:,}")
-        st.write(f"- Forecast Horizon: {forecast_weeks} weeks")
-        st.write(f"- Nearest Neighbours (K): {k_neighbours}")
-        st.write(f"- Distance Epsilon: {epsilon}")
+    df_neighbours = pd.DataFrame(neighbours_data)
+    st.dataframe(df_neighbours, use_container_width=True, hide_index=True)
     
-    # -------------------------
-    # TAB 4: METHODOLOGY
-    # -------------------------
-    with tab4:
-        st.subheader("📖 Methodology")
-        
-        st.markdown("""
-        ### How the Evidence Explorer Works
-        
-        #### 1️⃣ Feature Vector Construction
-        Your scenario is converted into a **14-dimensional feature vector**:
-```
-        x* = [wealth, health, education, npi_1, ..., npi_9, vacc_share, income_support]
-```
-        
-        All values are normalized to [0, 1] for meaningful comparisons.
-        
-        #### 2️⃣ Nearest Neighbour Search
-        We compare your scenario to thousands of real historical (country, week) episodes using **Euclidean distance**:
-```
-        distance = √(Σ(x_i - x*)²)
-```
-        
-        #### 3️⃣ Weighting
-        Closer matches receive higher weights:
-```
-        w_i = 1 / (distance_i + ε)
-        w_i = w_i / Σw_i  (normalized)
-```
-        
-        #### 4️⃣ Trajectory Averaging
-        Projections are **weighted averages** of what actually happened in similar situations:
-```
-        cases[week] = Σ(w_i × cases_i[week])
-        deaths[week] = Σ(w_i × deaths_i[week])
-```
-        
-        #### 5️⃣ Derived Metrics
-        - **Mortality Rate**: deaths / (cases + ε)
-        - **Stringency**: (1/9) × Σ(100 × npi_j)
-        - **Compliance**: Weighted average from matched episodes
-        
-        #### 6️⃣ Scaling
-        Per-capita projections are scaled to your selected population:
-```
-        absolute_cases = cases_per_100k × (population / 100,000)
-```
-        
-        ---
-        
-        ### Why This Approach?
-        
-        ✅ **Transparent**: All projections trace back to real historical data
-        
-        ✅ **No Black Box**: No complex simulation assumptions
-        
-        ✅ **Evidence-Based**: Grounded in what actually happened
-        
-        ✅ **Interpretable**: You can inspect the similar situations used
-        
-        ⚠️ **Limitation**: Quality depends on having similar historical situations in the database
-        
-        ---
-        
-        ### Data Sources
-        - Oxford COVID-19 Government Response Tracker (OxCGRT)
-        - Our World in Data
-        - Google Mobility Reports
-        - WHO COVID-19 Database
-        
-        *Note: This demo uses simulated data for illustration. Production version would use actual historical database.*
-        """)
+    st.markdown("---")
+    
+    # Distance distribution
+    st.subheader("Distance Distribution")
+    st.caption("How similar are the matched situations?")
+    
+    all_distances = [d for d, _ in results['nearest_neighbours']]
+    
+    fig_dist = go.Figure()
+    fig_dist.add_trace(go.Histogram(
+        x=all_distances,
+        nbinsx=20,
+        marker_color='lightblue',
+        marker_line_color='blue',
+        marker_line_width=1
+    ))
+    
+    fig_dist.update_layout(
+        height=240,
+        xaxis_title="Distance from Scenario",
+        yaxis_title="Count",
+        plot_bgcolor='white',
+        showlegend=False
+    )
+    
+    st.plotly_chart(fig_dist, use_container_width=True)
+    
+    st.info(f"""
+    💡 **Interpretation:**
+    - Average distance: {np.mean(all_distances):.4f}
+    - Minimum distance: {np.min(all_distances):.4f}
+    - Maximum distance: {np.max(all_distances):.4f}
+    
+    Smaller distances indicate more similar historical situations. 
+    The weighted average emphasizes closer matches.
+    """)
 
-else:
-    # Show instructions when no results yet
-    st.info("""
-    👈 **Get Started:**
+# -------------------------
+# TAB 3: SCENARIO DETAILS
+# -------------------------
+with tab3:
+    st.subheader("📋 Your Scenario Configuration")
     
-    1. Configure your hypothetical country's characteristics in the sidebar
-    2. Set vaccination levels and economic support
-    3. Choose non-pharmaceutical interventions (NPIs)
-    4. Set population and forecast horizon
-    5. Click "Find Similar Situations & Project"
+    col1, col2 = st.columns(2)
     
-    The system will find real historical COVID situations that match your scenario and show you what happened next.
+    with col1:
+        st.write("**Country Profile:**")
+        profile_data = {
+            "Component": ["Wealth Index", "Health Index", "Education Index"],
+            "Value": [f"{wealth_index:.1f}", f"{health_index:.1f}", f"{education_index:.1f}"]
+        }
+        st.table(pd.DataFrame(profile_data))
+        
+        st.write("**Economic Support:**")
+        st.write(f"- Vaccination Coverage: {vaccination_pct}%")
+        st.write(f"- Income Support: {income_support_level}")
+    
+    with col2:
+        st.write("**Non-Pharmaceutical Interventions:**")
+        npi_data = {
+            "Intervention": [
+                "School Closures", "Workplace Closures", "Public Events",
+                "Gathering Limits", "Public Transport", "Stay-at-Home",
+                "Internal Movement", "International Travel", "Information Campaigns"
+            ],
+            "Level": [
+                npi_1, npi_2, npi_3, npi_4, npi_5, 
+                npi_6, npi_7, npi_8, npi_9
+            ],
+            "Value": [f"{v:.2f}" for v in npis]
+        }
+        st.dataframe(pd.DataFrame(npi_data), hide_index=True, use_container_width=True)
+    
+    st.markdown("---")
+    
+    st.write("**Feature Vector (14 dimensions):**")
+    st.code(f"{results['scenario_vector']}", language=None)
+    
+    st.markdown("---")
+    
+    st.write("**Analysis Parameters:**")
+    st.write(f"- Population: {population:,}")
+    st.write(f"- Forecast Horizon: {forecast_weeks} weeks")
+    st.write(f"- Nearest Neighbours (K): {k_neighbours}")
+    st.write(f"- Distance Epsilon: {epsilon}")
+
+# -------------------------
+# TAB 4: METHODOLOGY
+# -------------------------
+with tab4:
+    st.subheader("📖 Methodology")
+    
+    st.markdown("""
+    ### How the Evidence Explorer Works
+    
+    #### 1️⃣ Feature Vector Construction
+    Your scenario is converted into a **14-dimensional feature vector**:
+```
+    x* = [wealth, health, education, npi_1, ..., npi_9, vacc_share, income_support]
+```
+    
+    All values are normalized to [0, 1] for meaningful comparisons.
+    
+    #### 2️⃣ Nearest Neighbour Search
+    We compare your scenario to thousands of real historical (country, week) episodes using **Euclidean distance**:
+```
+    distance = √(Σ(x_i - x*)²)
+```
+    
+    #### 3️⃣ Weighting
+    Closer matches receive higher weights:
+```
+    w_i = 1 / (distance_i + ε)
+    w_i = w_i / Σw_i  (normalized)
+```
+    
+    #### 4️⃣ Trajectory Averaging
+    Projections are **weighted averages** of what actually happened in similar situations:
+```
+    cases[week] = Σ(w_i × cases_i[week])
+    deaths[week] = Σ(w_i × deaths_i[week])
+```
+    
+    #### 5️⃣ Derived Metrics
+    - **Mortality Rate**: deaths / (cases + ε)
+    - **Stringency**: (1/9) × Σ(100 × npi_j)
+    - **Compliance**: Weighted average from matched episodes
+    
+    #### 6️⃣ Scaling
+    Per-capita projections are scaled to your selected population:
+```
+    absolute_cases = cases_per_100k × (population / 100,000)
+```
+    
+    ---
+    
+    ### Why This Approach?
+    
+    ✅ **Transparent**: All projections trace back to real historical data
+    
+    ✅ **No Black Box**: No complex simulation assumptions
+    
+    ✅ **Evidence-Based**: Grounded in what actually happened
+    
+    ✅ **Interpretable**: You can inspect the similar situations used
+    
+    ⚠️ **Limitation**: Quality depends on having similar historical situations in the database
+    
+    ---
+    
+    ### Data Sources
+    - Oxford COVID-19 Government Response Tracker (OxCGRT)
+    - Our World in Data
+    - Google Mobility Reports
+    - WHO COVID-19 Database
+    
+    *Note: This demo uses simulated data for illustration. Production version would use actual historical database.*
     """)
 
 # ============================================================================
